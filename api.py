@@ -295,7 +295,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[MINIAPP_ORIGIN] if MINIAPP_ORIGIN != "*" else ["*"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "X-Telegram-Init-Data", "Authorization"],
