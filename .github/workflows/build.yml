@@ -8,8 +8,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -17,16 +23,14 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
       - name: Install dependencies
         run: npm install
 
       - name: Sync Capacitor
         run: npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
 
       - name: Build Debug APK
         run: cd android && ./gradlew assembleDebug
