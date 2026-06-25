@@ -59,7 +59,18 @@ function buildBOC(comment) {
 
 const API_BASE = 'https://web-production-7ecf2.up.railway.app';
 
-// ── Firebase Auth (Android App) ──────────────────────────────
+// ── Telegram WebApp Init ──────────────────────────────────────
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.setHeaderColor('#05050D');
+  tg.setBackgroundColor('#05050D');
+}
+function getInitData() { return tg?.initData || ''; }
+
+// ── Firebase Auth (Android App — بدون Telegram) ───────────────
+// يُفعَّل فقط عند غياب Telegram WebApp
 let _firebaseUser = null;
 
 async function _getFirebaseToken() {
@@ -68,7 +79,7 @@ async function _getFirebaseToken() {
   catch (_) { return null; }
 }
 
-function _isFirebaseMode() { return typeof firebase !== 'undefined'; }
+function _isFirebaseMode() { return !tg && typeof firebase !== 'undefined'; }
 
 // تهيئة Firebase عند التحميل
 function _initFirebase() {
@@ -76,7 +87,7 @@ function _initFirebase() {
   firebase.auth().getRedirectResult().then(result => {
     if (result.user) console.log("Google sign-in success:", result.user.email);
   }).catch(e => console.error("Redirect error:", e));
-  if (typeof firebase === 'undefined') return;
+  if (tg || typeof firebase === 'undefined') return;
   firebase.auth().onAuthStateChanged(async (user) => {
     _firebaseUser = user;
     if (user) {
@@ -177,9 +188,14 @@ async function _registerEmail() {
 async function api(method, path, body = null) {
   const headers = { 'Content-Type': 'application/json' };
 
-  // Android: Firebase Bearer token
-  const token = await _getFirebaseToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (_isFirebaseMode()) {
+    // Android: Firebase Bearer token
+    const token = await _getFirebaseToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    // Mini App: Telegram InitData
+    headers['X-Telegram-Init-Data'] = getInitData();
+  }
 
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
@@ -475,7 +491,7 @@ async function payWithTonConnect(dealId, toAddress, amountTon, comment) {
         // تأكد أن الجلسة المستعادة (إن وجدت) صالحة قبل الاعتماد عليها
         await _tcUI.connectionRestored;
 
-        // إذا المحفظة غير متصلة، نفتح TON Connect مباشرة
+        // إذا المحفظة غير متصلة، نفتح Telegram Wallet مباشرة
         if (!_tcUI.wallet) {
             try {
                 await _tcUI.openModal();
@@ -523,7 +539,7 @@ async function payWithTonConnect(dealId, toAddress, amountTon, comment) {
 
 function buildPaymentScreen(deal) {
     const wallet = deal.escrow_wallet || window._escrowWallet || '';
-    const comment = `AND-#${deal.id}`;
+    const comment = String(deal.id);
     const amount = deal.amount_ton;
     return `
     <div style="width:100%;display:flex;flex-direction:column;gap:10px">
@@ -1068,7 +1084,8 @@ async function _doFetchChatPreview(value) {
   cardEl.classList.remove('show');
   try {
     const _chatHeaders = { 'Content-Type': 'application/json' };
-    const t = await _getFirebaseToken(); if (t) _chatHeaders['Authorization'] = `Bearer ${t}`;
+    if (_isFirebaseMode()) { const t = await _getFirebaseToken(); if (t) _chatHeaders['Authorization'] = `Bearer ${t}`; }
+    else _chatHeaders['X-Telegram-Init-Data'] = getInitData();
     const res = await fetch(`https://web-production-7ecf2.up.railway.app/chat-preview?identifier=${encodeURIComponent(value)}`, {
       headers: _chatHeaders
     });
@@ -1210,10 +1227,10 @@ function renderWalletPage() {
   const ws    = document.getElementById('create-wallet-status');
 
   if (addr) {
-    // ── Avatar: أول حرف من اسم المستخدم (Firebase)
-    const firebaseUser = _firebaseUser;
-    const userName = firebaseUser?.displayName || firebaseUser?.email?.split('@')[0] || 'U';
-    const photoUrl = firebaseUser?.photoURL || '';
+    // ── Avatar: أول حرف من اسم المستخدم أو صورته من تيليغرام
+    const tgUser   = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const userName = tgUser?.first_name || tgUser?.username || 'U';
+    const photoUrl = tgUser?.photo_url || '';
     const initials = userName.charAt(0).toUpperCase();
 
     const avatarInner = photoUrl
@@ -1512,7 +1529,7 @@ async function claimAndPayMarketItem(id) {
   if (!wallet) { toast('No escrow wallet found', true); return; }
 
   const amount = deal.amount_ton;
-  const comment = `AND-#${deal.id}`;
+  const comment = `deal-${deal.id}`;
 
   try {
     if (!window.TON_CONNECT_UI) { toast('TonConnect not loaded', true); return; }
@@ -1691,8 +1708,12 @@ function escHtml(s) {
 })();
 
 // ── Init ──────────────────────────────────────────────────────
-// Android: Firebase يتحكم
-window.addEventListener('load', () => _initFirebase());
+// Mini App: يبدأ مباشرة | Android: Firebase يتحكم
+if (tg) {
+  boot();
+} else {
+  window.addEventListener('load', () => _initFirebase());
+}
 
 // alias يستدعيه _initFirebase بعد تسجيل الدخول
 function init() { boot(); }
